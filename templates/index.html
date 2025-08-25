@@ -102,6 +102,7 @@
     <script>
         // 全局变量存储当前语速
         let currentSpeed = 1.0;
+        let activeUtterances = new Map(); // 存储每个按钮对应的语音实例
         
         // 更新语速显示值
         function updateSpeedValue() {
@@ -140,9 +141,8 @@
                     speakButton.className = 'speak-button';
                     speakButton.textContent = '🔊 发音';
                     speakButton.onclick = function() {
-                        speakText(sentence);
+                        speakText(sentence, speakButton); // 传递按钮引用
                     };
-                    
                     // 创建包含文本和按钮的容器
                     const englishTextDiv = document.createElement('div');
                     englishTextDiv.className = 'english-text';
@@ -162,16 +162,57 @@
             });
         }
         
-        function speakText(text) {
+        function speakText(text, button) {
             // 检查浏览器是否支持语音合成
             if ('speechSynthesis' in window) {
-                // 创建一个语音实例
+                const buttonKey = text; // 使用文本作为唯一标识
+                
+                // 如果当前有正在播放的语音
+                if (activeUtterances.has(buttonKey)) {
+                    const utterance = activeUtterances.get(buttonKey);
+                    
+                    // 如果正在播放，则暂停
+                    if (window.speechSynthesis.speaking && !window.speechSynthesis.paused) {
+                        window.speechSynthesis.pause();
+                        button.textContent = '▶ 继续';
+                        return;
+                    }
+                    // 如果已暂停，则继续播放
+                    else if (window.speechSynthesis.paused) {
+                        window.speechSynthesis.resume();
+                        button.textContent = '⏸ 暂停';
+                        return;
+                    }
+                }
+                
+                // 如果没有正在播放的语音，或者播放已完成，则创建新的语音实例
+                window.speechSynthesis.cancel(); // 取消其他语音
+                
                 const utterance = new SpeechSynthesisUtterance(text);
                 
                 // 设置语音参数
                 utterance.lang = 'en-US';      // 设置为英语
                 utterance.rate = currentSpeed; // 使用可调节的语速
                 utterance.pitch = 1;           // 音调
+                
+                // 语音开始时更新按钮文本
+                utterance.onstart = function() {
+                    button.textContent = '⏸ 暂停';
+                };
+                
+                // 语音结束或取消时清理状态
+                utterance.onend = function() {
+                    activeUtterances.delete(buttonKey);
+                    button.textContent = '🔊 发音';
+                };
+                
+                utterance.onerror = function() {
+                    activeUtterances.delete(buttonKey);
+                    button.textContent = '🔊 发音';
+                };
+                
+                // 存储语音实例
+                activeUtterances.set(buttonKey, utterance);
                 
                 // 播放语音
                 window.speechSynthesis.speak(utterance);
@@ -183,6 +224,11 @@
         // 页面加载完成后初始化语速值显示
         window.onload = function() {
             updateSpeedValue();
+            
+            // 页面卸载时清理语音
+            window.addEventListener('beforeunload', function() {
+                window.speechSynthesis.cancel();
+            });
         };
     </script>
 </body>
